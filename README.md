@@ -1,4 +1,4 @@
-<h1 align=center>Gamebody Syllabus Powerpoint</h1>
+<h1 align=center>Game Boy Syllabus Powerpoint</h1>
 
 <h3 align=center><em>A Syllabus Slideshow on Real Game Boy Hardware</em></h3>
 
