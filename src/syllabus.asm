@@ -1,13 +1,36 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;                 G A M E  B O Y   S Y L L A B U S                 ;;
+;;——————————————————————————————————————————————————————————————————;;
+;;                      Sebastián Romero Cruz                       ;;
+;;                          Aestās MMXXVI                           ;;
+;;——————————————————————————————————————————————————————————————————;;
+;;                                                                  ;;
+;;                        E8 AB B8 E8 A1 8C                         ;;
+;;                        E7 84 A1 E5 B8 B8                         ;;
+;;                                                                  ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Includes                                                         
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 INCLUDE "assets/hardware.inc"
 INCLUDE "assets/font.asm"
 INCLUDE "assets/slides.asm"
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Header Housekeeping.                                             
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 SECTION "Header", ROM0[$100]
 
 	jp EntryPoint
 
 	ds $150 - @, 0 ; Make room for the header
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Initialisation                                                   
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 EntryPoint:
 	; Shut down audio circuitry
 	ld a, 0
@@ -39,23 +62,31 @@ WaitVBlank:
 	ld [wNewKeys], a
 	ld [wCurSlide], a
 
+	; Enable the VBlank interrupt
+	ld a, IE_VBLANK
+	ld [rIE], a
+	ei ; unmask interrupts globally (IME on), rIE alone can't fire one
+
 	; Load and reveal the first slide — same path every later transition uses
 	call LoadSlide
 
-; ---------------------------------------------------------------------------
-; Main loop: wait for VBlank, poll input, advance/retreat the slide on an
-; edge-triggered A/B press, then loop. The double wait (leave LY>=144, then
-; re-enter it) guarantees exactly one UpdateKeys call per frame, even if the
-; loop body runs faster than a full frame.
-; ---------------------------------------------------------------------------
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Main loop: wait for VBlank, poll input, advance/retreat the      
+;; slide on an edge-triggered A/B press, then loop. The double wait 
+;; (leave LY >= 144, then re-enter it) guarantees exactly one          
+;; UpdateKeys call per frame, even if the loop body runs faster     
+;; than a ful frame.												
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Main:
-	ld a, [rLY]
-	cp 144
-	jp nc, Main
 WaitVBlank2:
-	ld a, [rLY]
-	cp 144
-	jp c, WaitVBlank2
+	halt
+	ld a, [wVBlankFlag]
+	cp 0
+	jr z, WaitVBlank2
+
+	ld a, 0
+	ld [wVBlankFlag], a
 
 	call UpdateKeys
 
@@ -71,7 +102,10 @@ WaitVBlank2:
 	call LoadSlide
 	jp Main
 
-; B pressed? Go back to the previous slide, unless already on the first one.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; B pressed? Go back to the previous slide, unless already on the  ;;
+;; first one.														;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CheckB:
 	ld a, [wNewKeys]
 	and a, PAD_B
@@ -84,12 +118,13 @@ CheckB:
 	call LoadSlide
 	jp Main
 
-; ---------------------------------------------------------------------------
-; UpdateKeys: polls the joypad and writes wCurKeys (buttons currently held)
-; and wNewKeys (buttons that just transitioned from up to down this frame).
-; Straight from the gbdev.io Input chapter, this exact double-nibble dance
-; is what the JOYP hardware requires; treat .onenibble as "trust me" for now.
-; ---------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; UpdateKeys: polls the joypad and writes wCurKeys (buttons 		
+;; currently held) and wNewKeys (buttons that just transitioned 	
+;; from up to down this frame). Straight from the gbdev.io Input 	
+;; chapter, this exact double-nibble dance is what the JOYP 		
+;; hardware requires; treat .onenibble as "trust me" for now.		
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 UpdateKeys:
 	; Poll half the controller
 	ld a, JOYP_GET_BUTTONS
@@ -117,13 +152,17 @@ UpdateKeys:
 	ret
 
 .onenibble
-	; writes the select bits you pass in (JOYP_GET_BUTTONS or 
-	; JOYP_GET_CTRL_PAD) into the register. This tells the hardware which of 
-	; the two 4-key groups to route onto bits 0-3.
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;; writes the select bits you pass in (JOYP_GET_BUTTONS or			
+	;; JOYP_GET_CTRL_PAD) into the register. This tells the hardware 	
+	;; which of the two 4-key groups to route onto bits 0-3.			
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	ld [rJOYP], a
 
-	; it exists purely to spend ~10 cycles. This is the SM83/hardware 
-	; equivalent of a debounce delay
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;; it exists purely to spend ~10 cycles. This is the SM83/hardware  
+	;; equivalent of a debounce delay									
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	call .knownret
 
 	; the first two are thrown away (still letting the matrix settle further)
@@ -132,22 +171,28 @@ UpdateKeys:
 
 	ld a, [rJOYP] ; this read counts
 
-	; forces the upper nibble to all 1s and leaves the lower nibble (the actual
-	; key states) untouched. Since unpressed = 1 and pressed = 0, this gives 
-	; you a clean byte: 1111 in the top nibble (unused/don't-care), and the 
-	; real pressed/unpressed bits in the bottom nibble.
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;; forces the upper nibble to all 1s and leaves the lower nibble 	
+	;;(the actual key states) untouched. Since unpressed = 1 and 		
+	;; pressed = 0, this gives you a clean byte: 1111 in the top nibble 
+	;; (unused/don't-care), and the real pressed/unpressed bits in the  
+	;; bottom nibble.													
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	or a, $F0 ; A7-4 = 1; A3-0 = unpressed keys
 
 .knownret
-	; this returns twice — once from the call .knownret (immediately,
-	; cycle-burning), and once for real at the end when .onenibble itself 
-	; returns. Same ret instruction, two different callers.
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	;; this returns twice: once from the call .knownret (immediately,	
+	;; cycle-burning), and once for real at the end when .onenibble 	
+	;; itself returns. Same ret instruction, two different callers.		
+	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	ret
 
-; ---------------------------------------------------------------------------
-; LoadSlide: looks up wCurSlide's tilemap pointer, blanks the BG map (so
-; there's something to "type" onto), then reveals it via RevealCopy.
-; ---------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; LoadSlide: looks up wCurSlide's tilemap pointer, blanks the BG   
+;; map (so there's something to "type" onto), then reveals it via   
+;; RevealCopy.														
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 LoadSlide:
 	ld a, [wCurSlide]
 	add a, a
@@ -194,19 +239,20 @@ Memcpy:
 	jr nz, Memcpy
 	ret
 
-; ---------------------------------------------------------------------------
-; RevealCopy: identical to Memcpy, except it waits for a fresh VBlank before
-; each byte. One tile revealed per frame — the "typewriter" effect. Blocks
-; until the whole map is copied.
-; ---------------------------------------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; RevealCopy: identical to Memcpy, except it waits for a fresh 	
+;; VBlank before each byte. One tile revealed per frame i.e the 		
+;; "typewriter" effect. Blocks until the whole map is copied.		
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 RevealCopy:
-	ld a, [rLY]
-	cp 144
-	jp nc, RevealCopy   ; wait to leave the current VBlank
 .wait
-	ld a, [rLY]
-	cp 144
-	jp c, .wait         ; wait to re-enter the next one
+	halt
+	ld a, [wVBlankFlag]
+	cp 0
+	jr z, .wait
+
+	ld a, 0
+	ld [wVBlankFlag], a
 
 	ld a, [de]
 	ld [hli], a
@@ -217,12 +263,42 @@ RevealCopy:
 	jr nz, RevealCopy
 	ret
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Interrupt Handler: fires automatically whenever LY reaches 144,
+;; i.e. once per frame, the moment VBlank begins. This is the whole
+;; VBlank-interrupt model in one place:
+;;
+;;   1. EntryPoint sets IE_VBLANK in rIE (this source may interrupt)
+;;      and then executes ei (interrupts are unmasked globally).
+;;   2. From then on, the hardware jumps here on its own the instant
+;;      LY hits 144, regardless of what the CPU was doing.
+;;   3. This handler does the bare minimum: save af (it's the only
+;;      register touched), set wVBlankFlag so the interrupted code
+;;      knows a VBlank happened, restore af, then reti — a normal
+;;      ret plus re-enabling IME, which the CPU cleared on entry.
+;;   4. Main and RevealCopy each halt (sleep the CPU until any
+;;      interrupt fires), then check wVBlankFlag and clear it once
+;;      seen. That flag is the only channel between this handler and
+;;      the rest of the program; nothing else here talks to them.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+SECTION "Interrupt Handler", ROM0[$0040]
+
+	push af
+
+	ld a, %00000001
+	ld [wVBlankFlag], a
+
+	pop af
+
+	reti
+
 
 SECTION "Input Variables", WRAM0
 
-wCurKeys: db
-wNewKeys: db
-wCurSlide: db
+wCurKeys: db    ; key state
+wNewKeys: db    ; key strokes
+wCurSlide: db   ; current slide pointer
+wVBlankFlag: db ; 
 
 
 SECTION "Slide Table", ROM0
@@ -232,5 +308,4 @@ Slides:
 .End:
 
 def NumSlides equ (Slides.End - Slides) / 2
-
 def SPACE_TILE equ 8 ; the ' ' glyph in FontTiles — used to blank the BG map before a reveal
