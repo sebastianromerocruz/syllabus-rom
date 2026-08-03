@@ -12,15 +12,15 @@
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Includes                                                         
+;; Includes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-INCLUDE "assets/hardware.inc"
-INCLUDE "assets/font.asm"
-INCLUDE "assets/slides.asm"
+INCLUDE "lib/hardware.inc"
+INCLUDE "lib/font.asm"
+INCLUDE "lib/comparch-slides.asm"
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Header Housekeeping.                                             
+;; Header Housekeeping.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 SECTION "Header", ROM0[$100]
 
@@ -29,7 +29,7 @@ SECTION "Header", ROM0[$100]
 	ds $150 - @, 0 ; Make room for the header
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Initialisation                                                   
+;; Initialisation
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 EntryPoint:
 	; Shut down audio circuitry
@@ -72,11 +72,11 @@ WaitVBlank:
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Main loop: wait for VBlank, poll input, advance/retreat the      
-;; slide on an edge-triggered A/B press, then loop. The double wait 
-;; (leave LY >= 144, then re-enter it) guarantees exactly one          
-;; UpdateKeys call per frame, even if the loop body runs faster     
-;; than a ful frame.												
+;; Main loop: wait for VBlank, poll input, advance/retreat the
+;; slide on an edge-triggered A/B press, then loop. The double wait
+;; (leave LY >= 144, then re-enter it) guarantees exactly one
+;; UpdateKeys call per frame, even if the loop body runs faster
+;; than a ful frame.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 Main:
 WaitVBlank2:
@@ -119,11 +119,11 @@ CheckB:
 	jp Main
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; UpdateKeys: polls the joypad and writes wCurKeys (buttons 		
-;; currently held) and wNewKeys (buttons that just transitioned 	
-;; from up to down this frame). Straight from the gbdev.io Input 	
-;; chapter, this exact double-nibble dance is what the JOYP 		
-;; hardware requires; treat .onenibble as "trust me" for now.		
+;; UpdateKeys: polls the joypad and writes wCurKeys (buttons
+;; currently held) and wNewKeys (buttons that just transitioned
+;; from up to down this frame). Straight from the gbdev.io Input
+;; chapter, this exact double-nibble dance is what the JOYP
+;; hardware requires; treat .onenibble as "trust me" for now.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 UpdateKeys:
 	; Poll half the controller
@@ -153,15 +153,15 @@ UpdateKeys:
 
 .onenibble
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	;; writes the select bits you pass in (JOYP_GET_BUTTONS or			
-	;; JOYP_GET_CTRL_PAD) into the register. This tells the hardware 	
-	;; which of the two 4-key groups to route onto bits 0-3.			
+	;; writes the select bits you pass in (JOYP_GET_BUTTONS or
+	;; JOYP_GET_CTRL_PAD) into the register. This tells the hardware
+	;; which of the two 4-key groups to route onto bits 0-3.
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	ld [rJOYP], a
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	;; it exists purely to spend ~10 cycles. This is the SM83/hardware  
-	;; equivalent of a debounce delay									
+	;; it exists purely to spend ~10 cycles. This is the SM83/hardware
+	;; equivalent of a debounce delay
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	call .knownret
 
@@ -172,26 +172,26 @@ UpdateKeys:
 	ld a, [rJOYP] ; this read counts
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	;; forces the upper nibble to all 1s and leaves the lower nibble 	
-	;;(the actual key states) untouched. Since unpressed = 1 and 		
-	;; pressed = 0, this gives you a clean byte: 1111 in the top nibble 
-	;; (unused/don't-care), and the real pressed/unpressed bits in the  
-	;; bottom nibble.													
+	;; forces the upper nibble to all 1s and leaves the lower nibble
+	;;(the actual key states) untouched. Since unpressed = 1 and
+	;; pressed = 0, this gives you a clean byte: 1111 in the top nibble
+	;; (unused/don't-care), and the real pressed/unpressed bits in the
+	;; bottom nibble.
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	or a, $F0 ; A7-4 = 1; A3-0 = unpressed keys
 
 .knownret
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	;; this returns twice: once from the call .knownret (immediately,	
-	;; cycle-burning), and once for real at the end when .onenibble 	
-	;; itself returns. Same ret instruction, two different callers.		
+	;; this returns twice: once from the call .knownret (immediately,
+	;; cycle-burning), and once for real at the end when .onenibble
+	;; itself returns. Same ret instruction, two different callers.
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; LoadSlide: looks up wCurSlide's tilemap pointer, blanks the BG   
-;; map (so there's something to "type" onto), then reveals it via   
-;; RevealCopy.														
+;; LoadSlide: looks up wCurSlide's tilemap pointer, blanks the BG
+;; map (so there's something to "type" onto), then reveals it via
+;; RevealCopy.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 LoadSlide:
 	ld a, [wCurSlide]
@@ -240,9 +240,9 @@ Memcpy:
 	ret
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; RevealCopy: identical to Memcpy, except it waits for a fresh 	
-;; VBlank before each byte. One tile revealed per frame i.e the 		
-;; "typewriter" effect. Blocks until the whole map is copied.		
+;; RevealCopy: identical to Memcpy, except it waits for a fresh
+;; VBlank before each byte. One tile revealed per frame i.e the
+;; "typewriter" effect. Blocks until the whole map is copied.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 RevealCopy:
 .wait
@@ -298,7 +298,7 @@ SECTION "Input Variables", WRAM0
 wCurKeys: db    ; key state
 wNewKeys: db    ; key strokes
 wCurSlide: db   ; current slide pointer
-wVBlankFlag: db ; 
+wVBlankFlag: db ;
 
 
 SECTION "Slide Table", ROM0
